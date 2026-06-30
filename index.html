@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <title>水邊圍站 - 輕鐵班次顯示屏</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: #000000; /* 純黑背景 */
+            color: #ffffff; 
+            margin: 0;
+            padding: 20px;
+            overflow: hidden;
+        }
+        .header {
+            text-align: center;
+            padding: 15px 0;
+            border-bottom: 2px solid #222;
+        }
+        h1 { font-size: 2.2rem; margin: 0; color: #ff9f0a; font-weight: bold; }
+        .station-sub { font-size: 1.1rem; color: #8e8e93; margin-top: 5px; }
+        
+        /* 模擬月台顯示屏表格 */
+        .schedule-table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        .schedule-table th {
+            color: #8e8e93;
+            font-size: 1.1rem;
+            text-align: left;
+            padding: 10px 5px;
+            border-bottom: 1px solid #333;
+        }
+        .schedule-table td {
+            padding: 18px 5px;
+            font-size: 1.6rem;
+            font-weight: bold;
+            border-bottom: 1px solid #222;
+        }
+        
+        /* 路線編號顏色 */
+        .route-no { color: #ffcc00; width: 20%; }
+        /* 目的地 */
+        .dest { color: #ffffff; width: 45%; }
+        /* 到站時間 */
+        .eta-time { color: #30d158; text-align: right; width: 35%; }
+        
+        .loading {
+            text-align: center;
+            font-size: 1.5rem;
+            color: #8e8e93;
+            padding: 50px 0;
+        }
+        
+        .footer {
+            position: fixed;
+            bottom: 15px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: #48484a;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>水邊圍 Shui Pin Wai</h1>
+        <div class="station-sub">輕鐵班次實時資訊面板</div>
+    </div>
+
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th>綫路</th>
+                <th>目的地</th>
+                <th style="text-align: right;">預計到達</th>
+            </tr>
+        </thead>
+        <tbody id="eta-rows">
+            <tr>
+                <td colspan="3" class="loading">正在獲取實時班次...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div id="countdown" class="footer">每 30 秒更新 (連線中...)</div>
+
+    <script>
+        var stationId = 280; // 水邊圍站官方 ID
+        var countdownSec = 30; // 改為 30 秒更新一次
+
+        function fetchAllETA() {
+            var url = 'https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule.php?stationId=' + stationId;
+            
+            fetch(url)
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    var platformList = data.platform_list;
+                    var allTrips = [];
+
+                    // 1. 拔取所有月台、所有綫路的班次整合到一個清單中
+                    if (platformList && platformList.length > 0) {
+                        for (var i = 0; i < platformList.length; i++) {
+                            var platform = platformList[i];
+                            if (platform.route_list) {
+                                for (var j = 0; j < platform.route_list.length; j++) {
+                                    var route = platform.route_list[j];
+                                    
+                                    // 過濾掉已經開出或到站的班次，只留有等待時間的
+                                    if (route.time_en !== "Departing" && route.time_en !== "Arrived") {
+                                        // 轉換成方便排序的數字 (例如 "5 分鐘" 轉成 5，即時到站 "0 分鐘" 轉成 0)
+                                        var min = parseInt(route.time_ch) || 0; 
+                                        
+                                        allTrips.push({
+                                            routeNo: route.route_no,
+                                            dest: route.dest_ch,
+                                            timeStr: route.time_ch,
+                                            minutes: min
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. 根據到站時間由近至遠排序 (避免月台交錯導致時間混亂)
+                    allTrips.sort(function(a, b) {
+                        return a.minutes - b.minutes;
+                    });
+
+                    // 3. 渲染到網頁畫面上
+                    var htmlResult = "";
+                    if (allTrips.length > 0) {
+                        // 最多顯示 6 班車，避免舊 iPad 畫面裝不下要捲動
+                        var displayLimit = Math.min(allTrips.length, 6);
+                        for (var k = 0; k < displayLimit; k++) {
+                            var trip = allTrips[k];
+                            htmlResult += '<tr>' +
+                                '<td class="route-no">' + trip.routeNo + '</td>' +
+                                '<td class="dest">' + trip.dest + '</td>' +
+                                '<td class="eta-time">' + trip.timeStr + '</td>' +
+                                '</tr>';
+                        }
+                    } else {
+                        htmlResult = '<tr><td colspan="3" class="loading">暫無即時班次資料</td></tr>';
+                    }
+
+                    document.getElementById('eta-rows').innerHTML = htmlResult;
+                    countdownSec = 30; // 成功後重設倒數為 30 秒
+                })
+                .catch(function(error) {
+                    console.log("API 錯誤:", error);
+                    document.getElementById('eta-rows').innerHTML = '<tr><td colspan="3" class="loading" style="color:#ff453a;">網絡連線失敗，等待重試</td></tr>';
+                });
+        }
+
+        // 倒數計時器 (每秒執行)
+        setInterval(function() {
+            countdownSec--;
+            document.getElementById('countdown').innerText = '網頁每半分鐘自動更新 (倒數 ' + countdownSec + ' 秒)';
+            if (countdownSec <= 0) {
+                fetchAllETA();
+            }
+        }, 1000);
+
+        // 首次載入
+        fetchAllETA();
+    </script>
+</body>
+</html>
