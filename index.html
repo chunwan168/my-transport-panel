@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>輕鐵水邊圍站到站時間 (橫向墨水屏版)</title>
+    <title>水邊圍 交通資訊輪播看板</title>
     <style>
         :root {
             --bg-color: #ffffff;
@@ -12,7 +12,7 @@
             --card-bg: #ffffff;
         }
 
-        /* 針對橫向螢幕優化，鎖定高度並隱藏滾動條 */
+        /* 鎖定橫向滿版，隱藏捲軸 */
         html, body {
             height: 100%;
             margin: 0;
@@ -35,6 +35,7 @@
             text-align: center;
             border-bottom: 4px solid var(--border-line);
             padding-bottom: 5px;
+            position: relative;
         }
 
         header h1 {
@@ -42,6 +43,17 @@
             font-size: 2rem;
             font-weight: 900;
             letter-spacing: 2px;
+        }
+
+        .view-badge {
+            position: absolute;
+            right: 10px;
+            top: 5px;
+            background: #000000;
+            color: #ffffff;
+            padding: 2px 10px;
+            font-weight: 900;
+            font-size: 1rem;
         }
 
         .status-bar {
@@ -65,28 +77,31 @@
             font-size: 0.8rem;
         }
 
-        .update-btn:active {
-            background-color: #000000;
-            color: #ffffff;
+        .page-view {
+            display: none; 
+            flex: 1;
+            margin-top: 15px;
+            overflow: hidden;
         }
 
-        /* 核心改動：使用 Flexbox 讓月台左右並排，並平分寬度 */
-        .dashboard-grid {
+        .page-view.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .lrt-grid {
             display: flex;
             flex: 1;
             gap: 25px;
-            margin-top: 15px;
-            overflow: hidden; /* 確保內容不超出 */
         }
 
         .platform-section {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: var(--card-bg);
         }
 
-        .platform-title {
+        .section-title {
             font-size: 1.4rem;
             font-weight: 900;
             color: var(--text-main);
@@ -102,37 +117,30 @@
         }
 
         .eta-table th, .eta-table td {
-            padding: 10px 5px;
+            padding: 8px 5px;
             text-align: left;
             border-bottom: 1px dashed var(--border-line);
             color: var(--text-main);
-            font-size: 1.1rem;
+            font-size: 1.15rem;
         }
 
         .eta-table th {
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             font-weight: bold;
             border-bottom: 2px solid var(--border-line);
             padding-bottom: 5px;
         }
 
-        .route-no {
+        .route-badge {
             border: 2px solid var(--border-line);
             padding: 1px 6px;
-            border-radius: 0;
             font-weight: 900;
             font-size: 1.05rem;
             display: inline-block;
-            min-width: 40px;
+            min-width: 45px;
             text-align: center;
         }
 
-        .route-610, .route-614, .route-615, .route-761P { 
-            background-color: transparent !important; 
-            color: #000000 !important; 
-        }
-
-        /* 墨水屏高對比反相顯眼提示 */
         .time-highlight {
             background-color: #000000;
             color: #ffffff;
@@ -141,15 +149,15 @@
             display: inline-block;
         }
 
-        .loading, .error-msg {
-            grid-column: span 2;
+        .loading-text {
             text-align: center;
             padding: 40px;
-            background: white;
             border: 2px dashed var(--border-line);
             margin-top: 20px;
             font-weight: bold;
             font-size: 1.2rem;
+            width: 100%;
+            box-sizing: border-box;
         }
     </style>
 </head>
@@ -157,54 +165,134 @@
 
 <div class="container">
     <header>
-        <h1>輕鐵水邊圍站</h1>
+        <h1 id="main-header-title">交通資訊看板</h1>
+        <span id="current-view-badge" class="view-badge">載入中</span>
     </header>
     
     <div class="status-bar">
         <span id="update-time">正在載入數據...</span>
-        <button class="update-btn" onclick="fetchETA()">手動更新</button>
+        <button class="update-btn" onclick="refreshAllData()">手動更新</button>
     </div>
 
-    <div id="eta-container" class="dashboard-grid">
-        <div class="loading">正在獲取實時到站時間...</div>
+    <div id="bus-view" class="page-view active">
+        <div id="bus-container">
+            <div class="loading-text">正在獲取巴士實時到站時間...</div>
+        </div>
+    </div>
+
+    <div id="lrt-view" class="page-view">
+        <div id="lrt-container" class="lrt-grid">
+            <div class="loading-text">正在獲取輕鐵實時到站時間...</div>
+        </div>
     </div>
 </div>
 
 <script>
-    const STATION_ID = 570;
-    const API_URL = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${STATION_ID}`;
+    const LRT_STATION_ID = 570; 
+    const BUS_STATIONS_CONFIG = [
+        { name: '西行站', stopId: '8097C239EBB9C5AF', routes: ['53', '269D', 'E36', 'E36C', 'E36S', 'N269'] },
+        { name: '東行站', stopId: 'E478149A709E7B15', routes: ['64X', '268B', '276P', 'N30', 'N276'] }
+    ];
 
-    async function fetchETA() {
-        const container = document.getElementById('eta-container');
-        const timeSpan = document.getElementById('update-time');
-        
+    // 直接呼叫最純粹、最準時的港鐵與九巴官方接口網址
+    const LRT_API_URL = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${LRT_STATION_ID}`;
+
+    // ================= 1. 獲取九巴數據 =================
+    async function fetchBusData(now) {
+        const container = document.getElementById('bus-container');
+        if (!container) return false;
+        let allCombinedData = [];
+        let hasError = false;
+
         try {
-            const response = await fetch(API_URL);
-            if (!response.ok) throw new Error('網路回應不成功');
-            
-            const data = await response.json();
-            
-            if (!data.platform_list || data.platform_list.length === 0) {
-                container.innerHTML = '<div class="loading">目前沒有列車班次資料。</div>';
-                return;
+            const requests = BUS_STATIONS_CONFIG.map(config => 
+                fetch(`https://data.etabus.gov.hk/v1/transport/kmb/stop-eta/${config.stopId}`)
+                    .then(res => res.ok ? res.json() : { data: [] })
+                    .then(result => (result && result.data) ? result.data.filter(item => config.routes.includes(item.route)) : [])
+                    .catch(() => { hasError = true; return []; })
+            );
+
+            const resultsArray = await Promise.all(requests);
+            resultsArray.forEach(data => { if (data) allCombinedData = allCombinedData.concat(data); });
+
+            if (allCombinedData.length === 0) {
+                container.innerHTML = `<div class="loading-text">${hasError ? '巴士 API 連線失敗' : '目前非服務時間'}</div>`;
+                return !hasError;
             }
 
-            const now = new Date();
-            const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            timeSpan.innerText = `最後更新: ${timeString}`;
+            allCombinedData.sort((a, b) => {
+                if (!a.eta) return 1; if (!b.eta) return -1;
+                return new Date(a.eta) - new Date(b.eta);
+            });
+
+            const limitedData = allCombinedData.slice(0, 8);
+
+            let htmlContent = `
+                <table class="eta-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">路線</th>
+                            <th style="width: 55%;">目的地</th>
+                            <th style="width: 25%;">預計到站</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            limitedData.forEach(etaItem => {
+                let timeDisplay = '---';
+                let isArriving = false;
+
+                if (etaItem.eta) {
+                    const diffMins = Math.max(0, Math.ceil((new Date(etaItem.eta) - now) / 60000));
+                    if (diffMins <= 1) { timeDisplay = '即將到站'; isArriving = true; }
+                    else { timeDisplay = `${diffMins} 分鐘`; }
+                } else { timeDisplay = '暫無班次'; }
+
+                htmlContent += `
+                    <tr>
+                        <td><span class="route-badge">${etaItem.route}</span></td>
+                        <td><strong>${etaItem.dest_tc}</strong></td>
+                        <td><span class="${isArriving ? 'time-highlight' : ''}">${timeDisplay}</span></td>
+                    </tr>
+                `;
+            });
+
+            htmlContent += `</tbody></table>`;
+            container.innerHTML = htmlContent;
+            return !hasError;
+        } catch (e) {
+            container.innerHTML = '<div class="loading-text">巴士數據處理異常</div>';
+            return false;
+        }
+    }
+
+    // ================= 2. 獲取輕鐵數據 (直連官方版) =================
+    async function fetchLightRailData() {
+        const container = document.getElementById('lrt-container');
+        if (!container) return false;
+
+        try {
+            const response = await fetch(LRT_API_URL);
+            if (!response.ok) throw new Error();
+            const data = await response.json();
+
+            if (!data || !data.platform_list || data.platform_list.length === 0) {
+                container.innerHTML = '<div class="loading-text">目前沒有列車班次資料。</div>';
+                return true;
+            }
 
             container.innerHTML = '';
 
-            // 依據月台分組左右顯示
             data.platform_list.forEach(platform => {
                 const platformId = platform.platform_id;
-                const routeList = platform.route_list;
+                const routeList = platform.route_list || [];
 
                 const section = document.createElement('div');
                 section.className = 'platform-section';
 
                 let htmlContent = `
-                    <h2 class="platform-title">${platformId} 號月台</h2>
+                    <h2 class="section-title">${platformId} 號月台</h2>
                     <table class="eta-table">
                         <thead>
                             <tr>
@@ -216,15 +304,17 @@
                         <tbody>
                 `;
 
-                if (routeList.length === 0) {
+                const limitedRoutes = routeList.slice(0, 5);
+
+                if (limitedRoutes.length === 0) {
                     htmlContent += `<tr><td colspan="3" style="text-align:center; color:#666; padding-top:20px;">暫無列車資訊</td></tr>`;
                 } else {
-                    routeList.forEach(route => {
+                    limitedRoutes.forEach(route => {
                         let timeDisplay = route.time_en || '未知';
                         let isArriving = false;
 
                         if (timeDisplay.toLowerCase().includes('min')) {
-                            const mins = parseInt(timeDisplay);
+                            const mins = parseInt(timeDisplay) || 0;
                             timeDisplay = `${mins} 分鐘`;
                             if (mins <= 1) isArriving = true;
                         } else if (timeDisplay.toLowerCase().includes('arr')) {
@@ -234,11 +324,9 @@
                             timeDisplay = '正在離開';
                         }
 
-                        const routeClass = `route-${route.route_no}`;
-
                         htmlContent += `
                             <tr>
-                                <td><span class="route-no ${routeClass}">${route.route_no}</span></td>
+                                <td><span class="route-badge">${route.route_no}</span></td>
                                 <td><strong>${route.dest_ch}</strong></td>
                                 <td><span class="${isArriving ? 'time-highlight' : ''}">${timeDisplay}</span></td>
                             </tr>
@@ -250,24 +338,67 @@
                 section.innerHTML = htmlContent;
                 container.appendChild(section);
             });
-
+            return true;
         } catch (error) {
-            console.error('獲取數據失敗:', error);
-            timeSpan.innerText = '更新失敗';
-            container.innerHTML = `
-                <div class="error-msg">
-                    <p>未能載入實時數據</p>
-                    <p style="font-size: 0.9rem; font-weight: normal;">請檢查網路連線。</p>
-                </div>
-            `;
+            container.innerHTML = '<div class="loading-text">輕鐵數據載入失敗 (請開啟 Chrome 的 Allow CORS 擴充功能)</div>';
+            return false;
         }
     }
 
-    // 頁面載入時先執行一次
-    fetchETA();
+    // ================= 3. 數據總刷新控制 =================
+    async function refreshAllData() {
+        const timeSpan = document.getElementById('update-time');
+        const now = new Date();
 
-    // 依然維持你原本要求的 30 秒更新間距 (30000 毫秒)
-    setInterval(fetchETA, 30000);
+        const [busSuccess, lrtSuccess] = await Promise.all([
+            fetchBusData(now).catch(() => false),
+            fetchLightRailData().catch(() => false)
+        ]);
+
+        if (timeSpan) {
+            const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            if (busSuccess && lrtSuccess) {
+                timeSpan.innerText = `最後更新: ${timeString}`;
+            } else {
+                timeSpan.innerText = `最後更新: ${timeString} (輕鐵數據需要 CORS 權限)`;
+            }
+        }
+    }
+
+    // ================= 4. 畫面每 15 秒跳轉切換核心 =================
+    let currentView = 'bus'; 
+
+    if (typeof switchViewInterval !== 'undefined') clearInterval(switchViewInterval);
+    if (typeof refreshDataInterval !== 'undefined') clearInterval(refreshDataInterval);
+
+    function switchView() {
+        const busView = document.getElementById('bus-view');
+        const lrtView = document.getElementById('lrt-view');
+        const headerTitle = document.getElementById('main-header-title');
+        const viewBadge = document.getElementById('current-view-badge');
+
+        if (currentView === 'bus') {
+            busView.classList.remove('active');
+            lrtView.classList.add('active');
+            headerTitle.innerText = "輕鐵 水邊圍站";
+            viewBadge.innerText = "🚇 輕鐵";
+            currentView = 'lrt';
+        } else {
+            lrtView.classList.remove('active');
+            busView.classList.add('active');
+            headerTitle.innerText = "水邊圍邨 巴士站";
+            viewBadge.innerText = "🚌 巴士";
+            currentView = 'bus';
+        }
+    }
+
+    // ================= 5. 定時器初始化 =================
+    refreshAllData();
+    document.getElementById('main-header-title').innerText = "水邊圍邨 巴士站";
+    document.getElementById('current-view-badge').innerText = "🚌 巴士";
+
+    var switchViewInterval = setInterval(switchView, 15000);   
+    var refreshDataInterval = setInterval(refreshAllData, 30000); 
 </script>
 
 </body>
