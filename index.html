@@ -2,329 +2,273 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <title>水邊圍交通資訊</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>輕鐵水邊圍站到站時間 (橫向墨水屏版)</title>
     <style>
-        * { box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            background: #000000; 
-            color: #ffffff; 
+        :root {
+            --bg-color: #ffffff;
+            --text-main: #000000;
+            --border-line: #000000;
+            --card-bg: #ffffff;
+        }
+
+        /* 針對橫向螢幕優化，鎖定高度並隱藏滾動條 */
+        html, body {
+            height: 100%;
             margin: 0;
-            padding: 15px;
+            padding: 0;
             overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
         }
-        .header {
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 10px 20px;
+            box-sizing: border-box;
+        }
+
+        header {
             text-align: center;
-            padding: 8px 0;
-            border-bottom: 2px solid #222;
+            border-bottom: 4px solid var(--border-line);
+            padding-bottom: 5px;
         }
-        h1 { font-size: 2.2rem; margin: 0; color: #ff9f0a; font-weight: bold; }
-        
-        .section-title {
-            font-size: 1.2rem;
-            color: #ff9f0a;
-            background: #1c1c1e;
-            padding: 6px 10px;
-            margin-top: 15px;
-            border-radius: 6px;
+
+        header h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 900;
+            letter-spacing: 2px;
+        }
+
+        .status-bar {
+            padding: 6px 5px;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border-line);
             font-weight: bold;
         }
 
-        .schedule-table {
+        .update-btn {
+            background-color: #ffffff;
+            color: #000000;
+            border: 2px solid var(--border-line);
+            padding: 2px 10px;
+            border-radius: 0;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.8rem;
+        }
+
+        .update-btn:active {
+            background-color: #000000;
+            color: #ffffff;
+        }
+
+        /* 核心改動：使用 Flexbox 讓月台左右並排，並平分寬度 */
+        .dashboard-grid {
+            display: flex;
+            flex: 1;
+            gap: 25px;
+            margin-top: 15px;
+            overflow: hidden; /* 確保內容不超出 */
+        }
+
+        .platform-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--card-bg);
+        }
+
+        .platform-title {
+            font-size: 1.4rem;
+            font-weight: 900;
+            color: var(--text-main);
+            border-bottom: 3px solid var(--border-line);
+            padding-bottom: 5px;
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+
+        .eta-table {
             width: 100%;
-            margin-top: 5px;
             border-collapse: collapse;
         }
-        .schedule-table th {
-            color: #8e8e93;
-            font-size: 0.95rem;
-            text-align: left;
-            padding: 6px 5px;
-            border-bottom: 1px solid #333;
-        }
-        .schedule-table td {
+
+        .eta-table th, .eta-table td {
             padding: 10px 5px;
-            font-size: 1.35rem;
-            font-weight: bold;
-            border-bottom: 1px solid #222;
-        }
-        
-        .type-badge {
-            font-size: 0.75rem;
-            padding: 2px 5px;
-            border-radius: 4px;
-            margin-right: 5px;
-            vertical-align: middle;
-        }
-        .badge-lrt { background: #5856d6; color: #fff; }
-        .badge-bus { background: #007aff; color: #fff; }
-
-        .stop-badge {
-            font-size: 0.75rem;
-            padding: 2px 5px;
-            border-radius: 4px;
-            margin-left: 5px;
-            background: #3a3a3c;
-            color: #aeaeb2;
-            font-weight: normal;
-            vertical-align: middle;
+            text-align: left;
+            border-bottom: 1px dashed var(--border-line);
+            color: var(--text-main);
+            font-size: 1.1rem;
         }
 
-        .route-no { color: #ffcc00; width: 25%; }
-        .dest { color: #ffffff; width: 50%; }
-        .eta-time { color: #30d158; text-align: right; width: 25%; }
-        
-        .loading {
-            text-align: center;
-            font-size: 1.2rem;
-            color: #8e8e93;
-            padding: 20px 0;
-        }
-        
-        .footer {
-            position: fixed;
-            bottom: 10px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            color: #48484a;
+        .eta-table th {
             font-size: 0.85rem;
+            font-weight: bold;
+            border-bottom: 2px solid var(--border-line);
+            padding-bottom: 5px;
+        }
+
+        .route-no {
+            border: 2px solid var(--border-line);
+            padding: 1px 6px;
+            border-radius: 0;
+            font-weight: 900;
+            font-size: 1.05rem;
+            display: inline-block;
+            min-width: 40px;
+            text-align: center;
+        }
+
+        .route-610, .route-614, .route-615, .route-761P { 
+            background-color: transparent !important; 
+            color: #000000 !important; 
+        }
+
+        /* 墨水屏高對比反相顯眼提示 */
+        .time-highlight {
+            background-color: #000000;
+            color: #ffffff;
+            padding: 2px 6px;
+            font-weight: 900;
+            display: inline-block;
+        }
+
+        .loading, .error-msg {
+            grid-column: span 2;
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border: 2px dashed var(--border-line);
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 1.2rem;
         }
     </style>
 </head>
 <body>
 
-    <div class="header">
-        <h1>水邊圍交通資訊</h1>
+<div class="container">
+    <header>
+        <h1>輕鐵水邊圍站</h1>
+    </header>
+    
+    <div class="status-bar">
+        <span id="update-time">正在載入數據...</span>
+        <button class="update-btn" onclick="fetchETA()">手動更新</button>
     </div>
 
-    <div class="section-title">🚇 輕鐵班次 (水邊圍站)</div>
-    <table class="schedule-table">
-        <thead>
-            <tr>
-                <th>綫路</th>
-                <th>目的地</th>
-                <th style="text-align: right;">到站時間</th>
-            </tr>
-        </thead>
-        <tbody id="lrt-rows">
-            <tr>
-                <td colspan="3" class="loading">正在獲取輕鐵班次...</td>
-            </tr>
-        </tbody>
-    </table>
+    <div id="eta-container" class="dashboard-grid">
+        <div class="loading">正在獲取實時到站時間...</div>
+    </div>
+</div>
 
-    <div class="section-title">🚌 巴士班次 (水邊圍邨 / 朗庭園)</div>
-    <table class="schedule-table">
-        <thead>
-            <tr>
-                <th>綫路</th>
-                <th>目的地</th>
-                <th style="text-align: right;">到站時間</th>
-            </tr>
-        </thead>
-        <tbody id="bus-rows">
-            <tr>
-                <td colspan="3" class="loading">正在獲取巴士班次...</td>
-            </tr>
-        </tbody>
-    </table>
+<script>
+    const STATION_ID = 570;
+    const API_URL = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${STATION_ID}`;
 
-    <div id="countdown" class="footer">每 30 秒更新 (政府數據連線中...)</div>
-
-    <script>
-        var lrtStationId = 280; 
+    async function fetchETA() {
+        const container = document.getElementById('eta-container');
+        const timeSpan = document.getElementById('update-time');
         
-        // 政府數據庫官方編號
-        var stopSbName = "水邊圍邨";
-        var govStopSbId = "002360"; 
-        var stopLtyName = "朗庭園";
-        var govStopLtyId = "002363"; 
-
-        var countdownSec = 30; 
-        var corsProxy = "https://corsproxy.io/?";
-
-        function padZero(num) { return num < 10 ? '0' + num : num; }
-
-        function getLrtArrivalTime(timeCh) {
-            var now = new Date();
-            if (timeCh === "即將抵達" || timeCh === "即時到站") {
-                return { minutes: 0, timeStr: padZero(now.getHours()) + ":" + padZero(now.getMinutes()) };
-            }
-            var minutesLeft = parseInt(timeCh);
-            if (!isNaN(minutesLeft)) {
-                var arrivalDate = new Date();
-                arrivalDate.setMinutes(arrivalDate.getMinutes() + minutesLeft);
-                return {
-                    minutes: minutesLeft,
-                    timeStr: padZero(arrivalDate.getHours()) + ":" + padZero(arrivalDate.getMinutes())
-                };
-            }
-            return { minutes: 99, timeStr: timeCh };
-        }
-
-        // 解析政府標準 ISO 時間字串並支援舊 iOS 系統
-        function parseGovBusTime(etaIsoStr, rmk) {
-            if (!etaIsoStr) return null;
+        try {
+            const response = await fetch(API_URL);
+            if (!response.ok) throw new Error('網路回應不成功');
             
-            var now = new Date();
-            var cleanIso = etaIsoStr.replace('T', ' ').replace('Z', '').split('.')[0];
-            var etaDate = new Date(cleanIso.replace(/-/g, '/')); // 轉為舊 Safari 必懂格式
+            const data = await response.json();
             
-            if (isNaN(etaDate.getTime())) {
-                etaDate = new Date(etaIsoStr);
+            if (!data.platform_list || data.platform_list.length === 0) {
+                container.innerHTML = '<div class="loading">目前沒有列車班次資料。</div>';
+                return;
             }
 
-            if (!isNaN(etaDate.getTime())) {
-                var diffMs = etaDate - now;
-                var diffMins = Math.max(0, Math.floor(diffMs / 1000 / 60));
-                return {
-                    minutes: diffMins,
-                    timeStr: padZero(etaDate.getHours()) + ":" + padZero(etaDate.getMinutes())
-                };
-            }
-            return { minutes: 99, timeStr: rmk ? rmk : "--:--" };
-        }
+            const now = new Date();
+            const timeString = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            timeSpan.innerText = `最後更新: ${timeString}`;
 
-        function refreshData() {
-            var lrtTrips = [];
-            var busTrips = [];
-            
-            var lrtUrl = 'https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule.php?stationId=' + lrtStationId;
-            var govSbUrl = corsProxy + encodeURIComponent('https://rt.data.gov.hk/v1/transport/public-bus-eta/stop/' + govStopSbId);
-            var govLtyUrl = corsProxy + encodeURIComponent('https://rt.data.gov.hk/v1/transport/public-bus-eta/stop/' + govStopLtyId);
+            container.innerHTML = '';
 
-            Promise.all([
-                fetch(lrtUrl).then(function(r) { return r.json(); }).catch(function(){ return null; }),
-                fetch(govSbUrl).then(function(r) { return r.json(); }).catch(function(){ return null; }),
-                fetch(govLtyUrl).then(function(r) { return r.json(); }).catch(function(){ return null; })
-            ]).then(function(results) {
-                var lrtData = results[0];
-                var govSbData = results[1];
-                var govLtyData = results[2];
+            // 依據月台分組左右顯示
+            data.platform_list.forEach(platform => {
+                const platformId = platform.platform_id;
+                const routeList = platform.route_list;
 
-                // 1. 處理輕鐵資料
-                if (lrtData && lrtData.platform_list) {
-                    for (var i = 0; i < lrtData.platform_list.length; i++) {
-                        var platform = lrtData.platform_list[i];
-                        if (platform.route_list) {
-                            for (var j = 0; j < platform.route_list.length; j++) {
-                                var route = platform.route_list[j];
-                                if (route.time_en !== "Departing" && route.time_en !== "Arrived") {
-                                    var timeObj = getLrtArrivalTime(route.time_ch);
-                                    lrtTrips.push({
-                                        badge: '<span class="type-badge badge-lrt">輕鐵</span>',
-                                        routeNo: route.route_no,
-                                        dest: route.dest_ch,
-                                        timeStr: timeObj.timeStr,
-                                        minutes: timeObj.minutes
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
+                const section = document.createElement('div');
+                section.className = 'platform-section';
 
-                // 2. 處理政府巴士數據 - 水邊圍邨
-                if (govSbData && govSbData.data) {
-                    for (var i = 0; i < govSbData.data.length; i++) {
-                        var item = govSbData.data[i];
-                        if (item.eta_seq === 1 && item.eta) {
-                            var busTime = parseGovBusTime(item.eta, item.rmk_tc);
-                            if (busTime) {
-                                busTrips.push({
-                                    badge: '<span class="type-badge badge-bus">巴士</span>',
-                                    routeNo: item.route,
-                                    dest: item.dest_tc,
-                                    timeStr: busTime.timeStr,
-                                    minutes: busTime.minutes,
-                                    stopName: '<span class="stop-badge">' + stopSbName + '</span>'
-                                });
-                            }
-                        }
-                    }
-                }
+                let htmlContent = `
+                    <h2 class="platform-title">${platformId} 號月台</h2>
+                    <table class="eta-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 25%;">路線</th>
+                                <th style="width: 45%;">目的地</th>
+                                <th style="width: 30%;">預計到站</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
 
-                // 3. 處理政府巴士數據 - 朗庭園
-                if (govLtyData && govLtyData.data) {
-                    for (var i = 0; i < govLtyData.data.length; i++) {
-                        var item = govLtyData.data[i];
-                        if (item.eta_seq === 1 && item.eta) {
-                            var busTime = parseGovBusTime(item.eta, item.rmk_tc);
-                            if (busTime) {
-                                busTrips.push({
-                                    badge: '<span class="type-badge badge-bus">巴士</span>',
-                                    routeNo: item.route,
-                                    dest: item.dest_tc,
-                                    timeStr: busTime.timeStr,
-                                    minutes: busTime.minutes,
-                                    stopName: '<span class="stop-badge">' + stopLtyName + '</span>'
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // 4. 排序
-                lrtTrips.sort(function(a, b) { return a.minutes - b.minutes; });
-                busTrips.sort(function(a, b) { return a.minutes - b.minutes; });
-
-                // 5. 渲染輕鐵畫面
-                var lrtHtml = "";
-                if (lrtTrips.length > 0) {
-                    var lrtLimit = Math.min(lrtTrips.length, 4);
-                    for (var k = 0; k < lrtLimit; k++) {
-                        var t = lrtTrips[k];
-                        lrtHtml += '<tr>' +
-                            '<td class="route-no">' + t.badge + t.routeNo + '</td>' +
-                            '<td class="dest">' + t.dest + '</td>' +
-                            '<td class="eta-time">' + t.timeStr + '</td>' +
-                            '</tr>';
-                    }
+                if (routeList.length === 0) {
+                    htmlContent += `<tr><td colspan="3" style="text-align:center; color:#666; padding-top:20px;">暫無列車資訊</td></tr>`;
                 } else {
-                    lrtHtml = '<tr><td colspan="3" class="loading">暫無即時輕鐵班次</td></tr>';
-                }
-                document.getElementById('lrt-rows').innerHTML = lrtHtml;
+                    routeList.forEach(route => {
+                        let timeDisplay = route.time_en || '未知';
+                        let isArriving = false;
 
-                // 6. 渲染巴士畫面
-                var busHtml = "";
-                if (busTrips.length > 0) {
-                    var busLimit = Math.min(busTrips.length, 5); // 稍微放寬到 5 班方便同時看兩個站
-                    for (var m = 0; m < busLimit; m++) {
-                        var b = busTrips[m];
-                        busHtml += '<tr>' +
-                            '<td class="route-no">' + b.badge + b.routeNo + '</td>' +
-                            '<td class="dest">' + b.dest + b.stopName + '</td>' +
-                            '<td class="eta-time">' + b.timeStr + '</td>' +
-                            '</tr>';
-                    }
-                } else {
-                    busHtml = '<tr><td colspan="3" class="loading">暫無即時巴士班次</td></tr>';
-                }
-                document.getElementById('bus-rows').innerHTML = busHtml;
+                        if (timeDisplay.toLowerCase().includes('min')) {
+                            const mins = parseInt(timeDisplay);
+                            timeDisplay = `${mins} 分鐘`;
+                            if (mins <= 1) isArriving = true;
+                        } else if (timeDisplay.toLowerCase().includes('arr')) {
+                            timeDisplay = '正在到站';
+                            isArriving = true;
+                        } else if (timeDisplay.toLowerCase().includes('dep')) {
+                            timeDisplay = '正在離開';
+                        }
 
-                countdownSec = 30;
-            }).catch(function(err) {
-                console.log(err);
-                var errRow = '<tr><td colspan="3" class="loading" style="color:#ff453a;">連線失敗，等待重試</td></tr>';
-                document.getElementById('lrt-rows').innerHTML = errRow;
-                document.getElementById('bus-rows').innerHTML = errRow;
+                        const routeClass = `route-${route.route_no}`;
+
+                        htmlContent += `
+                            <tr>
+                                <td><span class="route-no ${routeClass}">${route.route_no}</span></td>
+                                <td><strong>${route.dest_ch}</strong></td>
+                                <td><span class="${isArriving ? 'time-highlight' : ''}">${timeDisplay}</span></td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                htmlContent += `</tbody></table>`;
+                section.innerHTML = htmlContent;
+                container.appendChild(section);
             });
+
+        } catch (error) {
+            console.error('獲取數據失敗:', error);
+            timeSpan.innerText = '更新失敗';
+            container.innerHTML = `
+                <div class="error-msg">
+                    <p>未能載入實時數據</p>
+                    <p style="font-size: 0.9rem; font-weight: normal;">請檢查網路連線。</p>
+                </div>
+            `;
         }
+    }
 
-        setInterval(function() {
-            countdownSec--;
-            document.getElementById('countdown').innerText = '網頁每半分鐘自動更新 (倒數 ' + countdownSec + ' 秒)';
-            if (countdownSec <= 0) {
-                refreshData();
-            }
-        }, 1000);
+    // 頁面載入時先執行一次
+    fetchETA();
 
-        refreshData();
-    </script>
+    // 依然維持你原本要求的 30 秒更新間距 (30000 毫秒)
+    setInterval(fetchETA, 30000);
+</script>
+
 </body>
 </html>
