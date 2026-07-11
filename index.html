@@ -1,144 +1,180 @@
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
-  <meta charset="UTF-8">
-  <title>交通面板</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h2 { color: #006400; }
-    .section { margin-bottom: 30px; }
-    .item { padding: 8px; border-bottom: 1px solid #ccc; }
-    .lrt-item { background: #f0fff0; }
-    .kmb-item { background: #fff0f0; }
-    .mtr-item { background: #f0f8ff; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>水邊圍邨 巴士站</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', system-ui, sans-serif;
+            background: #ffffff;
+            color: #000000;
+            margin: 0;
+            padding: 12px;
+            line-height: 1.35;
+        }
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            border: 4px solid #000;
+            padding: 18px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 26px;
+            margin: 0 0 6px 0;
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 14.5px;
+            margin-bottom: 16px;
+            color: #222;
+        }
+        .route {
+            display: flex;
+            align-items: center;
+            padding: 13px 0;
+            border-bottom: 1px solid #999;
+        }
+        .route:last-child { border-bottom: none; }
+        .route-num {
+            font-size: 27px;
+            font-weight: bold;
+            width: 78px;
+            text-align: center;
+            border-right: 3px solid #000;
+            margin-right: 14px;
+            flex-shrink: 0;
+        }
+        .route-info { flex: 1; }
+        .dest {
+            font-size: 16px;
+            margin-bottom: 4px;
+            color: #222;
+            font-weight: 500;
+        }
+        .time {
+            font-size: 32px;
+            font-weight: bold;
+        }
+        .count {
+            font-size: 14.5px;
+            color: #333;
+        }
+        .no-bus {
+            font-size: 16px;
+            color: #444;
+            font-style: italic;
+        }
+        button {
+            display: block;
+            margin: 22px auto 8px;
+            padding: 11px 26px;
+            background: #000;
+            color: #fff;
+            border: none;
+            font-size: 15px;
+            font-weight: bold;
+            width: 100%;
+            max-width: 260px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 13px;
+            color: #444;
+            margin-top: 10px;
+        }
+    </style>
 </head>
 <body>
-  <h1>交通資訊面板</h1>
+    <div class="container">
+        <h1>附近巴士站</h1>
+        <p class="subtitle">水邊圍邨 (YL356/YL357/YL358)</p>
 
-  <div class="section">
-    <h2>輕鐵</h2>
-    <div id="light-rail">載入中...</div>
-  </div>
+        <div id="routes"></div>
 
-  <div class="section">
-    <h2>九巴</h2>
-    <div id="kmb">載入中...</div>
-  </div>
+        <button onclick="fetchAllETAs()">重新整理</button>
+        <div class="footer" id="update-time"></div>
+    </div>
 
-  <div class="section">
-    <h2>地鐵 (MTR)</h2>
-    <div id="mtr">載入中...</div>
-  </div>
+    <script>
+        const STOPS = ["BCC6E5BA6810FED6", "YL357", "YL356"];
 
-  <script>
-    // ====== API URL (請替換成實際來源) ======
-    const lightRailAPI = "https://example.com/api/light-rail"; 
-    const kmbAPI = "https://example.com/api/kmb"; 
-    const mtrAPI = "https://example.com/api/mtr"; 
+        const ROUTES = [
+            "276P", "53", "68A", "68X", "268B", "268P", "268X", 
+            "269D", "E36", "N269", "N30", "B1", "64X", "76K"
+        ];
 
-    // ====== 容器 ======
-    const lightRailContainer = document.getElementById("light-rail");
-    const kmbContainer = document.getElementById("kmb");
-    const mtrContainer = document.getElementById("mtr");
+        async function fetchETA(route, stop, dir) {
+            try {
+                let data = await (await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/\( {stop}/ \){route}/${dir}`)).json();
+                let etas = data.data || [];
+                if (etas.length === 0) {
+                    data = await (await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/\( {stop}/ \){route}/2`)).json();
+                    etas = data.data || [];
+                }
+                return etas;
+            } catch (e) {
+                return [];
+            }
+        }
 
-    // ====== 載入輕鐵資料 ======
-    function loadLightRail() {
-      fetch(lightRailAPI)
-        .then(response => {
-          if (!response.ok) throw new Error("輕鐵 API 回應失敗: " + response.status);
-          return response.json();
-        })
-        .then(data => {
-          if (data && data.routes && data.routes.length > 0) {
-            lightRailContainer.innerHTML = "";
-            data.routes.forEach(route => {
-              const item = document.createElement("div");
-              item.className = "item lrt-item";
-              item.innerHTML = `
-                <strong>路線:</strong> ${route.name} <br>
-                <strong>下一班:</strong> ${route.nextTrain || "暫無資料"}
-              `;
-              lightRailContainer.appendChild(item);
-            });
-          } else {
-            lightRailContainer.innerHTML = "目前沒有輕鐵資料。";
-          }
-        })
-        .catch(error => {
-          console.error("輕鐵資料載入失敗:", error);
-          lightRailContainer.innerHTML = "輕鐵資料載入失敗，請稍後再試。";
-        });
-    }
+        function isFuture(etaStr) {
+            if (!etaStr) return false;
+            return new Date(etaStr) > new Date(Date.now() - 180000);
+        }
 
-    // ====== 載入九巴資料 ======
-    function loadKMB() {
-      fetch(kmbAPI)
-        .then(response => {
-          if (!response.ok) throw new Error("九巴 API 回應失敗: " + response.status);
-          return response.json();
-        })
-        .then(data => {
-          if (data && data.routes && data.routes.length > 0) {
-            kmbContainer.innerHTML = "";
-            data.routes.forEach(route => {
-              const item = document.createElement("div");
-              item.className = "item kmb-item";
-              item.innerHTML = `
-                <strong>路線:</strong> ${route.name} <br>
-                <strong>下一班:</strong> ${route.nextBus || "暫無資料"}
-              `;
-              kmbContainer.appendChild(item);
-            });
-          } else {
-            kmbContainer.innerHTML = "目前沒有九巴資料。";
-          }
-        })
-        .catch(error => {
-          console.error("九巴資料載入失敗:", error);
-          kmbContainer.innerHTML = "九巴資料載入失敗，請稍後再試。";
-        });
-    }
+        async function fetchAllETAs() {
+            const container = document.getElementById('routes');
+            container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#555;">查詢中...</div>';
 
-    // ====== 載入地鐵資料 ======
-    function loadMTR() {
-      fetch(mtrAPI)
-        .then(response => {
-          if (!response.ok) throw new Error("MTR API 回應失敗: " + response.status);
-          return response.json();
-        })
-        .then(data => {
-          if (data && data.lines && data.lines.length > 0) {
-            mtrContainer.innerHTML = "";
-            data.lines.forEach(line => {
-              const item = document.createElement("div");
-              item.className = "item mtr-item";
-              item.innerHTML = `
-                <strong>路線:</strong> ${line.name} <br>
-                <strong>下一班:</strong> ${line.nextTrain || "暫無資料"}
-              `;
-              mtrContainer.appendChild(item);
-            });
-          } else {
-            mtrContainer.innerHTML = "目前沒有地鐵資料。";
-          }
-        })
-        .catch(error => {
-          console.error("MTR 資料載入失敗:", error);
-          mtrContainer.innerHTML = "地鐵資料載入失敗，請稍後再試。";
-        });
-    }
+            let html = '';
 
-    // ====== 定時刷新 (每 30 秒更新一次) ======
-    function refreshAll() {
-      loadLightRail();
-      loadKMB();
-      loadMTR();
-    }
-    document.addEventListener("DOMContentLoaded", () => {
-      refreshAll();
-      setInterval(refreshAll, 30000);
-    });
-  </script>
+            for (const route of ROUTES) {
+                let best = null;
+
+                for (const stopId of STOPS) {
+                    const etas = await fetchETA(route, stopId, 1);
+                    const valid = etas.filter(e => e.eta && isFuture(e.eta));
+                    if (valid.length > 0) {
+                        const candidate = valid[0];
+                        if (!best || new Date(candidate.eta) < new Date(best.eta)) {
+                            best = candidate;
+                        }
+                    }
+                }
+
+                html += `<div class="route">`;
+                html += `<div class="route-num">${route}</div>`;
+                html += `<div class="route-info">`;
+                
+                if (best) {
+                    const min = Math.round((new Date(best.eta) - new Date()) / 60000);
+                    const destName = best.dest_tc || (route + ' 線');
+                    html += `<div class="dest">${destName}</div>`;
+                    if (best.eta) {
+                        html += `<div class="time">${best.eta.substring(0,5)}</div>`;
+                        html += `<div class="count">${min > 0 ? min + ' 分鐘後' : '即將到達'}</div>`;
+                    } else {
+                        html += `<div class="no-bus">今日服務已結束</div>`;
+                    }
+                } else {
+                    html += `<div class="dest">${route} 線</div>`;
+                    html += `<div class="no-bus">今日服務已結束</div>`;
+                }
+                html += `</div></div>`;
+            }
+
+            container.innerHTML = html;
+            document.getElementById('update-time').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-HK');
+        }
+
+        window.onload = fetchAllETAs;
+        setInterval(fetchAllETAs, 30000);
+    </script>
 </body>
 </html>
