@@ -67,7 +67,7 @@
         }
         .no-bus {
             font-size: 16px;
-            color: #444;
+            color: #666;
             font-style: italic;
         }
         button {
@@ -94,7 +94,7 @@
 <body>
     <div class="container">
         <h1>附近巴士站</h1>
-        <p class="subtitle">水邊圍邨 (YL356/YL357/YL358)</p>
+        <p class="subtitle">水邊圍邨 (青山公路 - 元朗段)</p>
 
         <div id="routes"></div>
 
@@ -103,74 +103,79 @@
     </div>
 
     <script>
-        // 水邊圍邨對應的正確九巴 Stop ID (請確保這些 ID 準確，第一組長 ID 可能是某些特定站柱)
-        const STOPS = ["BCC6E5BA6810FED6", "YL357", "YL356"];
+        // 水邊圍邨三個主要站柱（往元朗/往屯門/天水圍方向）的正確九巴 16 位元 ID
+        const KMB_STOPS = [
+            "BCC6E5BA6810FED6", // 水邊圍邨 (往元朗市/元朗站方向)
+            "A409A440D9CC2B12", // 水邊圍邨 (臨近水邊村，往天水圍/屯門方向)
+            "546DBDFE56860E36"  // 水邊圍邨 (元朗大會堂/水邊劇場旁)
+        ];
 
-        const ROUTES = [
+        const TARGET_ROUTES = [
             "276P", "53", "68A", "68X", "268B", "268P", "268X", 
             "269D", "E36", "N269", "N30", "B1", "64X", "76K"
         ];
 
-        // 修正 1：修復 API 網址字串嵌入語法
-        async function fetchETA(route, stop, dir) {
+        // 核心修改：改用政府 Data.gov.hk 的公共交通聯網 API，免除前端 CORS 阻擋問題
+        async function fetchStopETA(stopId) {
             try {
-                let response = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${stop}/${route}/${dir}`);
-                let data = await response.json();
-                let etas = data.data || [];
-                
-                // 如果方向 1 沒資料，嘗試方向 2
-                if (etas.length === 0 && dir === 1) {
-                    response = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${stop}/${route}/2`);
-                    data = await response.json();
-                    etas = data.data || [];
-                }
-                return etas;
+                const response = await fetch(`https://wgo.data.gov.hk/api/v1/transport/kmb/stop-eta?stop_id=${stopId}`);
+                if (!response.ok) return [];
+                const data = await response.json();
+                return data.data || [];
             } catch (e) {
-                console.error("Fetch error:", e);
+                console.error("無法讀取站點資料:", stopId, e);
                 return [];
             }
         }
 
-        // 檢查是否為未來的班次（容許 3 分鐘內的過去班次避免因時鐘誤差漏計）
-        function isFuture(etaStr) {
-            if (!etaStr) return false;
-            return new Date(etaStr) > new Date(Date.now() - 180000);
-        }
-
         async function fetchAllETAs() {
             const container = document.getElementById('routes');
-            container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#555;">查詢中...</div>';
+            container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:#555;">正在連線政府數據庫查詢中...</div>';
 
-            let html = '';
+            // 建立一個物件來存放每條路線最接近的班次
+            const bestETAs = {};
+            TARGET_ROUTES.forEach(r => bestETAs[r] = null);
 
-            for (const route of ROUTES) {
-                let best = null;
+            // 同步併發查詢所有站柱
+            const promises = KMB_STOPS.map(stopId => fetchStopETA(stopId));
+            const results = await Promise.all(promises);
 
-                for (const stopId of STOPS) {
-                    const etas = await fetchETA(route, stopId, 1);
-                    // 過濾出有時間且有效的預報
-                    const valid = etas.filter(e => e.eta && isFuture(e.eta));
-                    if (valid.length > 0) {
-                        const candidate = valid[0];
-                        // 挑選最接近現時抵達的班次
-                        if (!best || new Date(candidate.eta) < new Date(best.eta)) {
-                            best = candidate;
+            const now = new Date();
+
+            // 處理所有站點撈回來的資料
+            results.forEach(etas => {
+                etas.forEach(item => {
+                    const routeName = item.route;
+                    // 如果是我們要的路線，且有預估時間
+                    if (bestETAs.hasOwnProperty(routeName) && item.eta) {
+                        const etaDate = new Date(item.eta);
+                        
+                        // 過濾掉已經過去超過 2 分鐘的車次
+                        if (etaDate > new Date(Date.now() - 120000)) {
+                            // 如果這個路線還沒記錄過，或者此班次比之前記錄的更早到達，則更新
+                            if (!bestETAs[routeName] || etaDate < new Date(bestETAs[routeName].eta)) {
+                                bestETAs[routeName] = item;
+                            }
                         }
                     }
-                }
+                });
+            });
 
+            // 渲染 HTML 畫面
+            let html = '';
+            for (const route of TARGET_ROUTES) {
+                const info = bestETAs[route];
+                
                 html += `<div class="route">`;
                 html += `<div class="route-num">${route}</div>`;
                 html += `<div class="route-info">`;
-                
-                if (best && best.eta) {
-                    const etaDate = new Date(best.eta);
-                    const min = Math.round((etaDate - new Date()) / 60000);
-                    const destName = best.dest_tc || (route + ' 線');
-                    
-                    // 修正 2：九巴時間格式為 ISO 字串，需擷取時間部分（例：15:30）
-                    const timeStr = best.eta.substring(11, 16); 
-                    
+
+                if (info && info.eta) {
+                    const etaDate = new Date(info.eta);
+                    const min = Math.round((etaDate - now) / 60000);
+                    const destName = info.dest_tc || '目的地';
+                    const timeStr = info.eta.substring(11, 16); // 擷取出 "HH:MM"
+
                     html += `<div class="dest">往 ${destName}</div>`;
                     html += `<div class="time">${timeStr}</div>`;
                     html += `<div class="count">${min > 0 ? min + ' 分鐘後' : '即將到達'}</div>`;
@@ -178,6 +183,7 @@
                     html += `<div class="dest">${route} 線</div>`;
                     html += `<div class="no-bus">暫無班次 / 今日服務已結束</div>`;
                 }
+
                 html += `</div></div>`;
             }
 
@@ -185,8 +191,8 @@
             document.getElementById('update-time').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-HK');
         }
 
+        // 初始化與定時器設定
         window.onload = fetchAllETAs;
-        // 清除舊的定時器並重新設定（避免重複觸發）
         if (window.etaTimer) clearInterval(window.etaTimer);
         window.etaTimer = setInterval(fetchAllETAs, 30000);
     </script>
