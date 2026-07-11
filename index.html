@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>交通實時到站資訊 V1.4</title>
+    <title>交通實時到站資訊 V1.5</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
         
@@ -121,13 +121,11 @@
         <h1>巴士 / 輕鐵實時到站</h1>
 
         <div class="grid-layout">
-            <!-- 【左欄：巴士】 -->
             <div class="column-left">
                 <h2>附近巴士實時到站</h2>
                 <div id="bus-routes"></div>
             </div>
 
-            <!-- 【右欄：輕鐵】 -->
             <div class="column-right">
                 <div class="lr-section">
                     <h2>輕鐵水邊圍站 (1號月台 - 往屯門/天水圍)</h2>
@@ -146,7 +144,6 @@
     </div>
 
     <script>
-        // ================= 巴士設定 =================
         const BUS_STOPS = ["BCC6E5BA6810FED6", "YL357", "YL356"];
         const BUS_ROUTES = [
             "276P", "53", "68A", "68X", "268B", "268P", "268X", 
@@ -159,10 +156,8 @@
             "64X": "香港科學園", "76K": "清河邨"
         };
 
-        // ================= 輕鐵設定 =================
         const LR_STOP_ID = 270; 
 
-        // 獲取巴士 ETA
         async function fetchBusETA(route, stop, dir) {
             try {
                 const response = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${stop}/${route}/${dir}`);
@@ -171,7 +166,6 @@
             } catch (e) { return []; }
         }
 
-        // 獲取輕鐵 ETA
         async function fetchLightRailETA() {
             try {
                 const response = await fetch(`https://rt.data.gov.hk/v1/transport/mtr/lrt/getMTRNextTrain?id=${LR_STOP_ID}`);
@@ -182,28 +176,29 @@
 
         function isFuture(etaStr) {
             if (!etaStr) return false;
+            // 允許 3 分鐘緩衝
             return new Date(etaStr) > new Date(Date.now() - 180000);
         }
 
-        // 主渲染程式
         async function fetchAllETAs() {
             document.getElementById('lr-p1').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">查詢中...</div>';
             document.getElementById('lr-p2').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">查詢中...</div>';
             document.getElementById('bus-routes').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">查詢中...</div>';
 
-            // 建立並行請求
             const promises = [];
+            // 巴士：同時請求 1, 2, 甚至特別方向 3，確保不漏掉特別班次
             for (const route of BUS_ROUTES) {
                 for (const stopId of BUS_STOPS) {
                     promises.push(fetchBusETA(route, stopId, 1).then(e => ({ type: 'bus', route, etas: e })));
                     promises.push(fetchBusETA(route, stopId, 2).then(e => ({ type: 'bus', route, etas: e })));
+                    promises.push(fetchBusETA(route, stopId, 3).then(e => ({ type: 'bus', route, etas: e })));
                 }
             }
             promises.push(fetchLightRailETA().then(e => ({ type: 'lr', data: e })));
 
             const results = await Promise.all(promises);
 
-            // ================= 1. 處理輕鐵渲染 (安全隔離版) =================
+            // ================= 1. 處理輕鐵渲染 =================
             let lrHtmlP1 = '';
             let lrHtmlP2 = '';
             
@@ -211,7 +206,6 @@
                 const lrObj = results.find(r => r.type === 'lr');
                 const lrResult = (lrObj && lrObj.data) ? lrObj.data : [];
 
-                // 預設無服務文字
                 lrHtmlP1 = `<div class="route"><div class="route-info"><div class="no-bus">暫無下一班車資訊</div></div></div>`;
                 lrHtmlP2 = `<div class="route"><div class="route-info"><div class="no-bus">暫無下一班車資訊</div></div></div>`;
 
@@ -250,7 +244,6 @@
                     }
                 });
             } catch (lrError) {
-                console.error("輕鐵資料處理出錯:", lrError);
                 lrHtmlP1 = `<div class="route"><div class="route-info"><div class="no-bus">輕鐵系統加載失敗</div></div></div>`;
                 lrHtmlP2 = `<div class="route"><div class="route-info"><div class="no-bus">輕鐵系統加載失敗</div></div></div>`;
             }
@@ -258,16 +251,33 @@
             document.getElementById('lr-p1').innerHTML = lrHtmlP1;
             document.getElementById('lr-p2').innerHTML = lrHtmlP2;
 
-            // ================= 2. 處理巴士渲染 (不論輕鐵是否壞掉，這裡都會執行) =================
+            // ================= 2. 處理巴士渲染 =================
             let busHtml = '';
+            const currentHour = new Date().getHours();
+
             try {
                 const busResults = results.filter(r => r.type === 'bus');
 
                 for (const route of BUS_ROUTES) {
+                    // 把所有站點、所有方向撈出來的該路線 ETA 全部併攏
                     const allEtas = busResults.filter(r => r.route === route).flatMap(r => r.etas || []);
-                    const validEtas = allEtas.filter(e => e && e.eta && isFuture(e.eta));
-                    validEtas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
                     
+                    // 過濾出有效的未來班次並去重（防止同班車在不同 Stop ID 重複出現）
+                    const seenTimes = new Set();
+                    const validEtas = [];
+                    
+                    for (const e of allEtas) {
+                        if (e && e.eta && isFuture(e.eta)) {
+                            const timeKey = e.eta.substring(11, 16);
+                            if (!seenTimes.has(timeKey)) {
+                                seenTimes.add(timeKey);
+                                validEtas.push(e);
+                            }
+                        }
+                    }
+                    
+                    // 按到站時間由先到後排序
+                    validEtas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
                     const best = validEtas[0];
 
                     busHtml += `<div class="route"><div class="route-num">${route}</div><div class="route-info">`;
@@ -280,12 +290,16 @@
                         busHtml += `<div class="count">${min > 0 ? min + ' 分鐘後' : '即將到達'}</div>`;
                     } else {
                         busHtml += `<div class="dest">往 ${BUS_TERMINAL_NAMES[route] || '目的地'}</div>`;
-                        busHtml += `<div class="no-bus">今日服務已結束</div>`;
+                        // 智能提示：如果現在是深夜/凌晨（0點-5點），顯示收車；如果是日間，顯示暫無班次
+                        if (currentHour >= 0 && currentHour < 5) {
+                            busHtml += `<div class="no-bus">今日服務已結束</div>`;
+                        } else {
+                            busHtml += `<div class="no-bus">暫無預報班次 (非服務時段)</div>`;
+                        }
                     }
                     busHtml += `</div></div>`;
                 }
             } catch (busError) {
-                console.error("巴士資料處理出錯:", busError);
                 busHtml = '<div style="padding:20px;text-align:center;color:red;">巴士資料加載失敗</div>';
             }
 
