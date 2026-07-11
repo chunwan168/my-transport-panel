@@ -1,322 +1,144 @@
 <!DOCTYPE html>
 <html lang="zh-HK">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>交通實時到站資訊 V1.8</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700&display=swap');
-        
-        body {
-            font-family: 'Noto Sans TC', system-ui, sans-serif;
-            background: #ffffff;
-            color: #000000;
-            margin: 0;
-            padding: 12px;
-            line-height: 1.35;
-        }
-        .container {
-            max-width: 100%;
-            margin: 0 auto;
-            border: 4px solid #000;
-            padding: 18px;
-        }
-        h1 {
-            text-align: center;
-            font-size: 26px;
-            margin: 0 0 16px 0;
-            border-bottom: 3px solid #000;
-            padding-bottom: 8px;
-        }
-        h2 {
-            font-size: 18px;
-            background: #000;
-            color: #fff;
-            padding: 6px 12px;
-            margin: 0 0 10px 0;
-            text-align: center;
-        }
-        
-        .grid-layout {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            align-items: start;
-        }
-        
-        .lr-section {
-            margin-bottom: 20px;
-        }
-        
-        .route {
-            display: flex;
-            align-items: center;
-            padding: 13px 0;
-            border-bottom: 1px solid #999;
-        }
-        .route:last-child { border-bottom: none; }
-        .route-num {
-            font-size: 27px;
-            font-weight: bold;
-            width: 78px;
-            text-align: center;
-            border-right: 3px solid #000;
-            margin-right: 14px;
-            flex-shrink: 0;
-        }
-        .route-info { flex: 1; }
-        .dest {
-            font-size: 16px;
-            margin-bottom: 4px;
-            color: #222;
-            font-weight: bold;
-        }
-        .time {
-            font-size: 32px;
-            font-weight: bold;
-        }
-        .count {
-            font-size: 14.5px;
-            color: #333;
-        }
-        .no-bus {
-            font-size: 16px;
-            color: #666;
-            font-style: italic;
-        }
-        button {
-            display: block;
-            margin: 22px auto 8px;
-            padding: 11px 26px;
-            background: #000;
-            color: #fff;
-            border: none;
-            font-size: 15px;
-            font-weight: bold;
-            width: 100%;
-            max-width: 260px;
-            cursor: pointer;
-        }
-        button:active { background: #333; }
-        .footer {
-            text-align: center;
-            font-size: 13px;
-            color: #444;
-            margin-top: 15px;
-        }
-
-        @media (max-width: 768px) {
-            .grid-layout {
-                grid-template-columns: 1fr;
-                gap: 0;
-            }
-            .column-right {
-                margin-top: 20px;
-            }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>交通面板</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h2 { color: #006400; }
+    .section { margin-bottom: 30px; }
+    .item { padding: 8px; border-bottom: 1px solid #ccc; }
+    .lrt-item { background: #f0fff0; }
+    .kmb-item { background: #fff0f0; }
+    .mtr-item { background: #f0f8ff; }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>巴士 / 輕鐵實時到站</h1>
+  <h1>交通資訊面板</h1>
 
-        <div class="grid-layout">
-            <!-- 【左欄：巴士】 -->
-            <div class="column-left">
-                <h2>附近巴士實時到站</h2>
-                <div id="bus-routes"></div>
-            </div>
+  <div class="section">
+    <h2>輕鐵</h2>
+    <div id="light-rail">載入中...</div>
+  </div>
 
-            <!-- 【右欄：輕鐵】 -->
-            <div class="column-right">
-                <div class="lr-section">
-                    <h2>輕鐵水邊圍站 (1號月台 - 往屯門/天水圍)</h2>
-                    <div id="lr-p1"></div>
-                </div>
-                
-                <div class="lr-section">
-                    <h2>輕鐵水邊圍站 (2號月台 - 往元朗)</h2>
-                    <div id="lr-p2"></div>
-                </div>
-            </div>
-        </div>
+  <div class="section">
+    <h2>九巴</h2>
+    <div id="kmb">載入中...</div>
+  </div>
 
-        <button onclick="refreshAll()">重新整理</button>
-        <div class="footer" id="update-time"></div>
-    </div>
+  <div class="section">
+    <h2>地鐵 (MTR)</h2>
+    <div id="mtr">載入中...</div>
+  </div>
 
-    <script>
-        const BUS_STOPS = ["BCC6E5BA6810FED6", "YL357", "YL356"];
-        const BUS_ROUTES = [
-            "276P", "53", "68A", "68X", "268B", "268P", "268X", 
-            "269D", "E36", "N269", "N30", "B1", "64X", "76K"
-        ];
-        const BUS_TERMINAL_NAMES = {
-            "276P": "上水", "53": "元朗 型點", "68A": "朗屏邨", "68X": "旺角東站",
-            "268B": "紅磡碼頭", "268P": "觀塘碼頭", "268X": "佐敦(西九龍站)", "269D": "瀝源",
-            "E36": "八鄉路", "N269": "美孚", "N30": "元朗站", "B1": "落馬洲支線",
-            "64X": "香港科學園", "76K": "清河邨"
-        };
+  <script>
+    // ====== API URL (請替換成實際來源) ======
+    const lightRailAPI = "https://example.com/api/light-rail"; 
+    const kmbAPI = "https://example.com/api/kmb"; 
+    const mtrAPI = "https://example.com/api/mtr"; 
 
-        const LR_STOP_ID = 270; 
+    // ====== 容器 ======
+    const lightRailContainer = document.getElementById("light-rail");
+    const kmbContainer = document.getElementById("kmb");
+    const mtrContainer = document.getElementById("mtr");
 
-        function isFuture(etaStr) {
-            if (!etaStr) return false;
-            return new Date(etaStr) > new Date(Date.now() - 180000);
-        }
+    // ====== 載入輕鐵資料 ======
+    function loadLightRail() {
+      fetch(lightRailAPI)
+        .then(response => {
+          if (!response.ok) throw new Error("輕鐵 API 回應失敗: " + response.status);
+          return response.json();
+        })
+        .then(data => {
+          if (data && data.routes && data.routes.length > 0) {
+            lightRailContainer.innerHTML = "";
+            data.routes.forEach(route => {
+              const item = document.createElement("div");
+              item.className = "item lrt-item";
+              item.innerHTML = `
+                <strong>路線:</strong> ${route.name} <br>
+                <strong>下一班:</strong> ${route.nextTrain || "暫無資料"}
+              `;
+              lightRailContainer.appendChild(item);
+            });
+          } else {
+            lightRailContainer.innerHTML = "目前沒有輕鐵資料。";
+          }
+        })
+        .catch(error => {
+          console.error("輕鐵資料載入失敗:", error);
+          lightRailContainer.innerHTML = "輕鐵資料載入失敗，請稍後再試。";
+        });
+    }
 
-        // ================= 巴士加載（九巴 API 很穩定） =================
-        async function fetchBusETA(route, stop, dir) {
-            try {
-                const response = await fetch(`https://data.etabus.gov.hk/v1/transport/kmb/eta/${stop}/${route}/${dir}`);
-                const data = await response.json();
-                return data.data || [];
-            } catch (e) { return []; }
-        }
+    // ====== 載入九巴資料 ======
+    function loadKMB() {
+      fetch(kmbAPI)
+        .then(response => {
+          if (!response.ok) throw new Error("九巴 API 回應失敗: " + response.status);
+          return response.json();
+        })
+        .then(data => {
+          if (data && data.routes && data.routes.length > 0) {
+            kmbContainer.innerHTML = "";
+            data.routes.forEach(route => {
+              const item = document.createElement("div");
+              item.className = "item kmb-item";
+              item.innerHTML = `
+                <strong>路線:</strong> ${route.name} <br>
+                <strong>下一班:</strong> ${route.nextBus || "暫無資料"}
+              `;
+              kmbContainer.appendChild(item);
+            });
+          } else {
+            kmbContainer.innerHTML = "目前沒有九巴資料。";
+          }
+        })
+        .catch(error => {
+          console.error("九巴資料載入失敗:", error);
+          kmbContainer.innerHTML = "九巴資料載入失敗，請稍後再試。";
+        });
+    }
 
-        async function loadBusData() {
-            document.getElementById('bus-routes').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">巴士查詢中...</div>';
-            
-            const promises = [];
-            for (const route of BUS_ROUTES) {
-                for (const stopId of BUS_STOPS) {
-                    promises.push(fetchBusETA(route, stopId, 1).then(etas => ({ route, etas })));
-                    promises.push(fetchBusETA(route, stopId, 2).then(etas => ({ route, etas })));
-                    promises.push(fetchBusETA(route, stopId, 3).then(etas => ({ route, etas })));
-                }
-            }
+    // ====== 載入地鐵資料 ======
+    function loadMTR() {
+      fetch(mtrAPI)
+        .then(response => {
+          if (!response.ok) throw new Error("MTR API 回應失敗: " + response.status);
+          return response.json();
+        })
+        .then(data => {
+          if (data && data.lines && data.lines.length > 0) {
+            mtrContainer.innerHTML = "";
+            data.lines.forEach(line => {
+              const item = document.createElement("div");
+              item.className = "item mtr-item";
+              item.innerHTML = `
+                <strong>路線:</strong> ${line.name} <br>
+                <strong>下一班:</strong> ${line.nextTrain || "暫無資料"}
+              `;
+              mtrContainer.appendChild(item);
+            });
+          } else {
+            mtrContainer.innerHTML = "目前沒有地鐵資料。";
+          }
+        })
+        .catch(error => {
+          console.error("MTR 資料載入失敗:", error);
+          mtrContainer.innerHTML = "地鐵資料載入失敗，請稍後再試。";
+        });
+    }
 
-            const results = await Promise.all(promises);
-            let busHtml = '';
-            const currentHour = new Date().getHours();
-
-            try {
-                for (const route of BUS_ROUTES) {
-                    const allEtas = results.filter(r => r.route === route).flatMap(r => r.etas || []);
-                    const seenTimes = new Set();
-                    const validEtas = [];
-                    
-                    for (const e of allEtas) {
-                        if (e && e.eta && isFuture(e.eta)) {
-                            const timeKey = e.eta.substring(11, 16);
-                            if (!seenTimes.has(timeKey)) {
-                                seenTimes.add(timeKey);
-                                validEtas.push(e);
-                            }
-                        }
-                    }
-                    
-                    validEtas.sort((a, b) => new Date(a.eta) - new Date(b.eta));
-                    const best = validEtas[0];
-
-                    busHtml += `<div class="route"><div class="route-num">${route}</div><div class="route-info">`;
-                    
-                    if (best) {
-                        const min = Math.round((new Date(best.eta) - new Date()) / 60000);
-                        const destName = best.dest_tc ? `往 ${best.dest_tc}` : `往 ${BUS_TERMINAL_NAMES[route]}`;
-                        busHtml += `<div class="dest">${destName}</div>`;
-                        busHtml += `<div class="time">${best.eta.substring(11, 16)}</div>`;
-                        busHtml += `<div class="count">${min > 0 ? min + ' 分鐘後' : '即將到達'}</div>`;
-                    } else {
-                        busHtml += `<div class="dest">往 ${BUS_TERMINAL_NAMES[route] || '目的地'}</div>`;
-                        if (currentHour >= 0 && currentHour < 5) {
-                            busHtml += `<div class="no-bus">今日服務已結束</div>`;
-                        } else {
-                            busHtml += `<div class="no-bus">暫無預報班次</div>`;
-                        }
-                    }
-                    busHtml += `</div></div>`;
-                }
-            } catch (err) {
-                busHtml = '<div style="padding:20px;text-align:center;color:red;">巴士處理出錯</div>';
-            }
-
-            document.getElementById('bus-routes').innerHTML = busHtml;
-            document.getElementById('update-time').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-HK');
-        }
-
-        // ================= 輕鐵加載（強力全新代理防禦機制） =================
-        async function loadLightRailData() {
-            document.getElementById('lr-p1').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">輕鐵查詢中...</div>';
-            document.getElementById('lr-p2').innerHTML = '<div style="padding:15px;text-align:center;color:#555;">輕鐵查詢中...</div>';
-
-            const rawUrl = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getMTRNextTrain?id=${LR_STOP_ID}`;
-            
-            // 升級更高效的 CORS 代理清單
-            const proxies = [
-                `https://corsproxy.io/?${encodeURIComponent(rawUrl)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`
-            ];
-
-            let lrResult = null;
-
-            // 輪詢最頂尖的代理，哪條通就用哪條，速度極快
-            for (const url of proxies) {
-                try {
-                    const response = await fetch(url, { method: 'GET' });
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.platform_list) {
-                            lrResult = data.platform_list;
-                            break; 
-                        }
-                    }
-                } catch (e) {
-                    console.log("當前輕鐵代理不可用，嘗試下一條...");
-                }
-            }
-
-            let lrHtmlP1 = `<div class="route"><div class="route-info"><div class="no-bus">暫無下一班車資訊</div></div></div>`;
-            let lrHtmlP2 = `<div class="route"><div class="route-info"><div class="no-bus">暫無下一班車資訊</div></div></div>`;
-
-            if (lrResult && lrResult.length > 0) {
-                lrResult.forEach(platform => {
-                    if (!platform) return;
-                    const pid = platform.platform_id; 
-                    const routeList = platform.route_list || [];
-                    let pHtml = '';
-
-                    if (routeList.length > 0) {
-                        routeList.forEach(train => {
-                            if (!train) return;
-                            let countText = '即將到達';
-                            let timeStr = '--:--';
-                            
-                            if (train.time_en && train.time_en.includes('min')) {
-                                const mins = parseInt(train.time_en);
-                                countText = `${mins} 分鐘後`;
-                                const etaTime = new Date(Date.now() + mins * 60000);
-                                timeStr = etaTime.toLocaleTimeString('zh-HK', {hour: '2-digit', minute:'2-digit', hour12: false});
-                            } else if (train.time_ch === '正在離開') {
-                                countText = '正在離開';
-                            }
-
-                            pHtml += `<div class="route">`;
-                            pHtml += `<div class="route-num">${train.route_no || '--'}</div>`;
-                            pHtml += `<div class="route-info">`;
-                            pHtml += `<div class="dest">往 ${train.dest_ch || '未知總站'} (${train.train_length || 1}卡)</div>`;
-                            pHtml += `<div class="time">${timeStr}</div>`;
-                            pHtml += `<div class="count">${countText}</div>`;
-                            pHtml += `</div></div>`;
-                        });
-                        
-                        if (pid === 1 && pHtml) lrHtmlP1 = pHtml;
-                        if (pid === 2 && pHtml) lrHtmlP2 = pHtml;
-                    }
-                });
-            }
-
-            document.getElementById('lr-p1').innerHTML = lrHtmlP1;
-            document.getElementById('lr-p2').innerHTML = lrHtmlP2;
-        }
-
-        function refreshAll() {
-            loadBusData();       
-            loadLightRailData(); 
-        }
-
-        window.onload = refreshAll;
-        setInterval(refreshAll, 30000);
-    </script>
+    // ====== 定時刷新 (每 30 秒更新一次) ======
+    function refreshAll() {
+      loadLightRail();
+      loadKMB();
+      loadMTR();
+    }
+    document.addEventListener("DOMContentLoaded", () => {
+      refreshAll();
+      setInterval(refreshAll, 30000);
+    });
+  </script>
 </body>
 </html>
